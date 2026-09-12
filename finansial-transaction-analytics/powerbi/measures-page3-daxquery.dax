@@ -1,0 +1,48 @@
+// Empat measure halaman 3 (kredensial basi), siap tempel ke DAX query view.
+// Klik 'Update model: Add new measure' di atas TIAP baris MEASURE,
+// urut dari atas ke bawah.
+
+DEFINE
+    MEASURE fact_transaction[Stale Credential Transactions] =
+        VAR StaleIds =
+        CALCULATETABLE (
+            DISTINCT ( br_transaction_error[transaction_id] ),
+            dim_error[error_name]
+                IN { "Bad Card Number", "Bad CVV", "Bad Expiration" }
+        )
+        RETURN
+        CALCULATE (
+            COUNTROWS ( fact_transaction ),
+            TREATAS ( StaleIds, fact_transaction[transaction_id] )
+        )
+
+    MEASURE fact_transaction[Stale Credential Value] =
+        VAR StaleIds =
+        CALCULATETABLE (
+            DISTINCT ( br_transaction_error[transaction_id] ),
+            dim_error[error_name]
+                IN { "Bad Card Number", "Bad CVV", "Bad Expiration" }
+        )
+        RETURN
+        CALCULATE (
+            SUM ( fact_transaction[abs_amount] ),
+            TREATAS ( StaleIds, fact_transaction[transaction_id] )
+        )
+
+    MEASURE fact_transaction[Stale Credential Rate] = DIVIDE ( [Stale Credential Transactions], [Transactions] )
+
+    MEASURE fact_transaction[Cards With Stale Credential] =
+        VAR StaleIds =
+        CALCULATETABLE (
+            DISTINCT ( br_transaction_error[transaction_id] ),
+            dim_error[error_name]
+                IN { "Bad Card Number", "Bad CVV", "Bad Expiration" }
+        )
+        RETURN
+        CALCULATE (
+            DISTINCTCOUNT ( fact_transaction[card_id] ),
+            TREATAS ( StaleIds, fact_transaction[transaction_id] )
+        )
+
+EVALUATE
+    { 1 }

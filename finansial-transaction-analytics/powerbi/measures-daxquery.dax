@@ -1,0 +1,119 @@
+// SEMUA measure dalam satu DAX query view.
+// Digenerate dari measures.dax -- jangan edit file ini langsung.
+
+DEFINE
+    MEASURE fact_transaction[Transactions] = COUNTROWS ( fact_transaction )
+
+    MEASURE fact_transaction[Total Spend] = SUM ( fact_transaction[amount] )
+
+    MEASURE fact_transaction[Gross Spend] = SUM ( fact_transaction[abs_amount] )
+
+    MEASURE fact_transaction[Refund Value] = CALCULATE ( SUM ( fact_transaction[abs_amount] ), fact_transaction[is_refund] = TRUE )
+
+    MEASURE fact_transaction[Avg Ticket] = DIVIDE ( [Gross Spend], [Transactions] )
+
+    MEASURE fact_transaction[Failed Transactions] = CALCULATE ( COUNTROWS ( fact_transaction ), fact_transaction[is_failed] = TRUE )
+
+    MEASURE fact_transaction[Failure Rate] = DIVIDE ( [Failed Transactions], [Transactions] )
+
+    MEASURE fact_transaction[Approval Rate] = 1 - [Failure Rate]
+
+    MEASURE fact_transaction[Failed Value] = CALCULATE ( SUM ( fact_transaction[abs_amount] ), fact_transaction[is_failed] = TRUE )
+
+    MEASURE fact_transaction[Issuer-Owned Failed Value] =
+        CALCULATE (
+        [Failed Value],
+        TREATAS (
+            CALCULATETABLE (
+                DISTINCT ( br_transaction_error[transaction_id] ),
+                dim_error[fault_owner] = "Issuer"
+            ),
+            fact_transaction[transaction_id]
+        )
+        )
+
+    MEASURE fact_transaction[Labelled Transactions] = CALCULATE ( COUNTROWS ( fact_transaction ), fact_transaction[has_fraud_label] = TRUE )
+
+    MEASURE fact_transaction[Label Coverage] = DIVIDE ( [Labelled Transactions], [Transactions] )
+
+    MEASURE fact_transaction[Fraud Transactions] = CALCULATE ( COUNTROWS ( fact_transaction ), fact_transaction[is_fraud] = TRUE )
+
+    MEASURE fact_transaction[Fraud Rate] = DIVIDE ( [Fraud Transactions], [Labelled Transactions] )
+
+    MEASURE fact_transaction[Fraud Loss] = CALCULATE ( SUM ( fact_transaction[abs_amount] ), fact_transaction[is_fraud] = TRUE )
+
+    MEASURE fact_transaction[Avg Fraud Ticket] = DIVIDE ( [Fraud Loss], [Fraud Transactions] )
+
+    MEASURE fact_transaction[Fraud Loss (bps)] = DIVIDE ( [Fraud Loss], [Gross Spend] ) * 10000
+
+    MEASURE fact_transaction[Spend per Day] = DIVIDE ( [Total Spend], COUNTROWS ( VALUES ( dim_date[full_date] ) ) )
+
+    MEASURE fact_transaction[Spend MTD] = TOTALMTD ( [Total Spend], dim_date[full_date] )
+
+    MEASURE fact_transaction[Spend YTD] = TOTALYTD ( [Total Spend], dim_date[full_date] )
+
+    MEASURE fact_transaction[Spend PY] = CALCULATE ( [Total Spend], SAMEPERIODLASTYEAR ( dim_date[full_date] ) )
+
+    MEASURE fact_transaction[Spend YoY %] = DIVIDE ( [Total Spend] - [Spend PY], [Spend PY] )
+
+    MEASURE fact_transaction[Failure Rate PY] = CALCULATE ( [Failure Rate], SAMEPERIODLASTYEAR ( dim_date[full_date] ) )
+
+    MEASURE fact_transaction[Failure Rate YoY pp] = ( [Failure Rate] - [Failure Rate PY] ) * 100
+
+    MEASURE fact_transaction[Spend Rolling 30D] =
+        CALCULATE (
+        [Total Spend],
+        DATESINPERIOD ( dim_date[full_date], MAX ( dim_date[full_date] ), -30, DAY )
+        )
+
+    MEASURE fact_transaction[Spend Rolling 30D Avg] = DIVIDE ( [Spend Rolling 30D], 30 )
+
+    MEASURE fact_transaction[Spend Running Total] =
+        CALCULATE (
+        [Total Spend],
+        FILTER ( ALL ( dim_date ), dim_date[full_date] <= MAX ( dim_date[full_date] ) )
+        )
+
+    MEASURE fact_transaction[Stale Credential Transactions] =
+        VAR StaleIds =
+        CALCULATETABLE (
+            DISTINCT ( br_transaction_error[transaction_id] ),
+            dim_error[error_name]
+                IN { "Bad Card Number", "Bad CVV", "Bad Expiration" }
+        )
+        RETURN
+        CALCULATE (
+            COUNTROWS ( fact_transaction ),
+            TREATAS ( StaleIds, fact_transaction[transaction_id] )
+        )
+
+    MEASURE fact_transaction[Stale Credential Value] =
+        VAR StaleIds =
+        CALCULATETABLE (
+            DISTINCT ( br_transaction_error[transaction_id] ),
+            dim_error[error_name]
+                IN { "Bad Card Number", "Bad CVV", "Bad Expiration" }
+        )
+        RETURN
+        CALCULATE (
+            SUM ( fact_transaction[abs_amount] ),
+            TREATAS ( StaleIds, fact_transaction[transaction_id] )
+        )
+
+    MEASURE fact_transaction[Stale Credential Rate] = DIVIDE ( [Stale Credential Transactions], [Transactions] )
+
+    MEASURE fact_transaction[Cards With Stale Credential] =
+        VAR StaleIds =
+        CALCULATETABLE (
+            DISTINCT ( br_transaction_error[transaction_id] ),
+            dim_error[error_name]
+                IN { "Bad Card Number", "Bad CVV", "Bad Expiration" }
+        )
+        RETURN
+        CALCULATE (
+            DISTINCTCOUNT ( fact_transaction[card_id] ),
+            TREATAS ( StaleIds, fact_transaction[transaction_id] )
+        )
+
+EVALUATE
+    { 1 }
